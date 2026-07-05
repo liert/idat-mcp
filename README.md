@@ -223,6 +223,14 @@ ida_close_database()
 | `ida_list_local_variables` | 列出函数反编译局部变量（需 Hex-Rays） |
 | `ida_get_local_variable_xrefs` | 查找局部变量在伪代码中的使用点（需 Hex-Rays） |
 
+### 高阶程序分析
+
+| 工具 | 说明 |
+|------|------|
+| `ida_find_call_path` | 在调用图中搜索从起点函数到终点函数的路径（BFS 最短路径 + 备选路径，`max_depth` / `max_paths` 可调） |
+| `ida_get_backward_slice` | 从 sink 地址对局部变量做 backward slice，返回影响该变量的伪代码语句（需 Hex-Rays） |
+| `ida_resolve_indirect_calls` | 解析函数内间接调用（如 AArch64 `BLR`），推断可能 callee 并可 `add_cref` 补全控制流 |
+
 ### 脚本执行
 
 | 工具 | 说明 |
@@ -243,7 +251,8 @@ ida_close_database()
 2. 继续 `ida_open_database` 打开更多二进制（之前的库仍保留）
 3. 用 `ida_select_database` 切换当前工作库
 4. 直接调用分析工具（针对默认库）
-5. 完成后用 `ida_close_database` 关闭
+5. 用 `ida_find_call_path` / `ida_get_backward_slice` / `ida_resolve_indirect_calls` 做跨函数路径与切片分析
+6. 完成后用 `ida_close_database` 关闭
 
 ## 架构
 
@@ -264,7 +273,7 @@ MCP Client (HTTP)
 
 | 目录 | 说明 |
 |------|------|
-| `src/idat_mcp/tools/` | MCP 工具定义（`database.py`、`functions.py`、`types.py` 等） |
+| `src/idat_mcp/tools/` | MCP 工具定义（`database.py`、`functions.py`、`analysis.py`、`types.py` 等） |
 | `src/idat_mcp/ops/` | IDA 底层操作（与 tools 一一对应） |
 
 ## 许可证

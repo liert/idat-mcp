@@ -1,6 +1,6 @@
 from typing import Any, Callable
 
-from idat_mcp.ops import database, functions, search, symbols, variables, xrefs
+from idat_mcp.ops import analysis, database, functions, search, symbols, variables, xrefs
 from idat_mcp.ops import annotations as annotation_ops
 from idat_mcp.ops import script as script_ops
 from idat_mcp.ops import types as type_ops
@@ -10,6 +10,7 @@ OPERATIONS: dict[str, Callable[..., Any]] = {}
 for module in (
     database,
     functions,
+    analysis,
     xrefs,
     search,
     symbols,
