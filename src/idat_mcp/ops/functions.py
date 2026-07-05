@@ -177,13 +177,9 @@ def get_function_callers(name_or_address: str, limit: int = 100) -> dict[str, An
 
 def get_function_callees(name_or_address: str, limit: int = 100) -> dict[str, Any]:
     import ida_funcs
-    import ida_idaapi
-    import ida_lines
     import ida_name
-    import ida_ua
     import idautils
-
-    from idat_mcp.ops.common import parse_address
+    import idc
 
     func = resolve_function(name_or_address)
     callees: list[dict[str, str]] = []
@@ -192,29 +188,23 @@ def get_function_callees(name_or_address: str, limit: int = 100) -> dict[str, An
     for head in idautils.FuncItems(func.start_ea):
         if len(callees) >= limit:
             break
-        mnem = ida_ua.print_insn_mnem(head)
-        if mnem not in ("call", "jmp"):
-            continue
-        target_text = ida_lines.tag_remove(ida_ua.print_operand(head, 0))
-        target_ea = ida_name.get_name_ea(ida_idaapi.BADADDR, target_text)
-        if target_ea == ida_idaapi.BADADDR:
-            try:
-                target_ea = parse_address(target_text)
-            except ValueError:
+        for ref in idautils.XrefsFrom(head):
+            if ref.type not in (idc.fl_CN, idc.fl_CF):
                 continue
-        if target_ea in seen:
-            continue
-        seen.add(target_ea)
-        callee_func = ida_funcs.get_func(target_ea)
-        callees.append(
-            {
-                "call_site": hex(head),
-                "instruction": mnem,
-                "target": hex(target_ea),
-                "target_name": ida_funcs.get_func_name(target_ea) or ida_name.get_name(target_ea) or "",
-                "target_function": hex(callee_func.start_ea) if callee_func else "",
-            }
-        )
+            target_ea = ref.to
+            if target_ea in seen:
+                continue
+            seen.add(target_ea)
+            callee_func = ida_funcs.get_func(target_ea)
+            callees.append(
+                {
+                    "call_site": hex(head),
+                    "instruction": idc.print_insn_mnem(head),
+                    "target": hex(target_ea),
+                    "target_name": ida_funcs.get_func_name(target_ea) or ida_name.get_name(target_ea) or "",
+                    "target_function": hex(callee_func.start_ea) if callee_func else "",
+                }
+            )
 
     target_name = ida_funcs.get_func_name(func.start_ea) or ida_name.get_name(func.start_ea) or ""
     return {

@@ -35,9 +35,9 @@ def _member_type_to_idc(member_type: str) -> tuple[int, int, int]:
     import idc
 
     tif = ida_typeinf.tinfo_t()
-    remainder = ida_typeinf.parse_decl(tif, None, f"{member_type} __member__;", ida_typeinf.PT_SIL)
-    if remainder is not None:
-        raise ValueError(f"Failed to parse member type {member_type!r}: {remainder}")
+    parsed_name = ida_typeinf.parse_decl(tif, None, f"{member_type} __member__;", ida_typeinf.PT_SIL)
+    if parsed_name is None:
+        raise ValueError(f"Failed to parse member type {member_type!r}")
 
     size = tif.get_size()
     if size <= 0:
@@ -131,13 +131,13 @@ def create_struct(declaration: str) -> dict[str, Any]:
 
     ida_typeinf.begin_type_updating(ida_typeinf.UTP_STRUCT)
     try:
-        count = ida_typeinf.parse_decls(None, declaration, None, ida_typeinf.PT_SIL | ida_typeinf.PT_TYP)
-        if count <= 0:
+        errors = ida_typeinf.parse_decls(None, declaration, None, ida_typeinf.PT_SIL | ida_typeinf.PT_TYP)
+        if errors > 0:
             raise RuntimeError(f"Failed to parse struct declaration: {declaration!r}")
     finally:
         ida_typeinf.end_type_updating(ida_typeinf.UTP_STRUCT)
 
-    return {"status": "created", "parsed_count": count, "declaration": declaration}
+    return {"status": "created", "errors": errors, "declaration": declaration}
 
 
 def add_struct_member(
@@ -213,26 +213,30 @@ def set_local_variable_type(function_address: str, variable_name: str, type_decl
     if not ida_hexrays.init_hexrays_plugin():
         raise RuntimeError("Hex-Rays decompiler is not available")
 
+    cfunc = ida_hexrays.decompile(func.start_ea)
+    if not cfunc:
+        raise RuntimeError(f"Decompilation failed for {hex(func.start_ea)}")
+
+    target_var = None
+    for lv in cfunc.get_lvars():
+        if lv.name == variable_name:
+            target_var = lv
+            break
+    if not target_var:
+        raise ValueError(f"Variable {variable_name!r} not found in function")
+
     tif = ida_typeinf.tinfo_t()
-    remainder = ida_typeinf.parse_decl(tif, None, f"{type_decl} __tmp__;", ida_typeinf.PT_SIL)
-    if remainder is not None:
-        raise ValueError(f"Failed to parse type {type_decl!r}: {remainder}")
+    parsed_name = ida_typeinf.parse_decl(tif, None, f"{type_decl} __tmp__;", ida_typeinf.PT_SIL)
+    if parsed_name is None:
+        raise ValueError(f"Failed to parse type {type_decl!r}")
 
-    class _LvarTypeModifier(ida_hexrays.user_lvar_modifier_t):
-        def __init__(self, target_name: str, new_type: Any) -> None:
-            super().__init__()
-            self.target_name = target_name
-            self.new_type = new_type
+    # Use modify_user_lvar_info to reliably set the type of a single variable
+    info = ida_hexrays.lvar_saved_info_t()
+    info.ll = ida_hexrays.lvar_locator_t(target_var.location, target_var.defea)
+    info.name = variable_name
+    info.type = tif
 
-        def modify_lvars(self, lvinf: Any) -> bool:
-            for index in range(lvinf.size()):
-                lsi = lvinf.at(index)
-                if lsi.name == self.target_name:
-                    lsi.type = self.new_type
-                    return True
-            return False
-
-    if not ida_hexrays.modify_user_lvars(func.start_ea, _LvarTypeModifier(variable_name, tif)):
+    if not ida_hexrays.modify_user_lvar_info(func.start_ea, ida_hexrays.MLI_TYPE, info):
         raise RuntimeError(f"Failed to set type {type_decl!r} on variable {variable_name!r}")
 
     response = {

@@ -70,8 +70,9 @@ def get_local_variable_xrefs(
         raise ValueError(f"Local variable not found: {variable_name!r}")
 
     class _LvarXrefVisitor(ida_hexrays.ctree_visitor_t):
-        def __init__(self, target_name: str, max_refs: int) -> None:
+        def __init__(self, cfunc: Any, target_name: str, max_refs: int) -> None:
             ida_hexrays.ctree_visitor_t.__init__(self, ida_hexrays.CV_FAST)
+            self.cfunc = cfunc
             self.target_name = target_name
             self.max_refs = max_refs
             self.refs: list[dict[str, str]] = []
@@ -79,16 +80,18 @@ def get_local_variable_xrefs(
         def visit_expr(self, expr: Any) -> int:
             if len(self.refs) >= self.max_refs:
                 return 1
-            if expr.op == ida_hexrays.cot_var and expr.v.name == self.target_name:
-                self.refs.append(
-                    {
-                        "address": hex(expr.ea),
-                        "expression": expr.dstr(),
-                    }
-                )
+            if expr.op == ida_hexrays.cot_var:
+                lvars = self.cfunc.get_lvars()
+                if expr.v.idx < len(lvars) and lvars[expr.v.idx].name == self.target_name:
+                    self.refs.append(
+                        {
+                            "address": hex(expr.ea),
+                            "expression": expr.dstr(),
+                        }
+                    )
             return 0
 
-    visitor = _LvarXrefVisitor(variable_name, limit)
+    visitor = _LvarXrefVisitor(cfunc, variable_name, limit)
     visitor.apply_to(cfunc.body, None)
 
     return {
