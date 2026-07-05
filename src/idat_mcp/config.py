@@ -15,6 +15,7 @@ class Settings:
     max_workers: int | None
     stateless_http: bool
     allowed_hosts: list[str]
+    debug: bool
 
     @classmethod
     def from_cli(
@@ -27,6 +28,7 @@ class Settings:
         max_workers: int | None = None,
         stateless_http: bool = False,
         allowed_hosts: list[str] | None = None,
+        debug: bool = False,
     ) -> Settings:
         ida_path = Path(ida_dir).expanduser().resolve()
         return cls(
@@ -38,6 +40,7 @@ class Settings:
             max_workers=max_workers,
             stateless_http=stateless_http,
             allowed_hosts=list(allowed_hosts or []),
+            debug=debug,
         )
 
     def validate(self) -> None:

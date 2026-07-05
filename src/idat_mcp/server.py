@@ -41,7 +41,7 @@ def create_server(settings: Settings) -> FastMCP:
         stateless_http=settings.stateless_http,
         transport_security=_transport_security(settings),
     )
-    register_tools(mcp, ida_dir=str(settings.ida_dir), max_workers=settings.max_workers)
+    register_tools(mcp, ida_dir=str(settings.ida_dir), max_workers=settings.max_workers, debug=settings.debug)
 
     @mcp.custom_route("/health", methods=["GET"])
     async def health(_request):

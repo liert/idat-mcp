@@ -45,6 +45,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Maximum number of concurrently open databases",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Log MCP tool invocations and elapsed time to stderr",
+    )
     return parser
 
 
@@ -59,6 +64,7 @@ def main(argv: list[str] | None = None) -> None:
         max_workers=args.max_workers,
         stateless_http=args.stateless,
         allowed_hosts=allowed_hosts,
+        debug=args.debug,
     )
 
     try:
@@ -76,6 +82,8 @@ def main(argv: list[str] | None = None) -> None:
         flush=True,
     )
     print("Health check: GET /health", flush=True)
+    if settings.debug:
+        print("Debug logging: enabled (tool start/done timings on stderr)", flush=True)
     if not settings.stateless_http:
         print(
             "Note: after server restart, reconnect MCP clients (stale mcp-session-id returns 404).",

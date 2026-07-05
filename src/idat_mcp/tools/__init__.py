@@ -5,8 +5,13 @@ from idat_mcp.tools import types as type_tools
 from idat_mcp.tools._base import ToolContext
 
 
-def register_tools(mcp, ida_dir: str, max_workers: int | None) -> None:
-    ctx = ToolContext(mcp, ida_dir, max_workers)
+def register_tools(
+    mcp,
+    ida_dir: str,
+    max_workers: int | None,
+    debug: bool = False,
+) -> None:
+    ctx = ToolContext(mcp, ida_dir, max_workers, debug=debug)
     database.register(ctx)
     functions.register(ctx)
     analysis.register(ctx)
