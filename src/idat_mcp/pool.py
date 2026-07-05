@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import threading
+import time
 from dataclasses import dataclass
 from multiprocessing.connection import Connection
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from idat_mcp.worker import spawn_worker
 
@@ -20,9 +21,17 @@ class WorkerEntry:
 class DatabasePool:
     """Manage one idalib worker process per open database."""
 
-    def __init__(self, ida_dir: str, max_workers: int | None = None) -> None:
+    def __init__(
+        self,
+        ida_dir: str,
+        max_workers: int | None = None,
+        debug: bool = False,
+        debug_log: Callable[[str], None] | None = None,
+    ) -> None:
         self.ida_dir = ida_dir
         self.max_workers = max_workers
+        self.debug = debug
+        self._debug_log = debug_log
         self._workers: dict[str, WorkerEntry] = {}
         self._default_database: str | None = None
         self._pool_lock = threading.Lock()
@@ -72,14 +81,60 @@ class DatabasePool:
     def _normalize_path(self, path: str) -> str:
         return str(Path(path).expanduser().resolve())
 
+    def _log_worker(self, message: str) -> None:
+        if self._debug_log is not None:
+            self._debug_log(message)
+
+    @staticmethod
+    def _describe_payload(payload: dict[str, Any]) -> str:
+        cmd = payload.get("cmd", "?")
+        if cmd == "call":
+            return f"call {payload.get('method', '?')}"
+        if cmd == "open":
+            recreate = payload.get("recreate", False)
+            return f"open recreate={recreate}"
+        if cmd == "close":
+            return f"close save={payload.get('save', True)}"
+        return cmd
+
     def _request(self, entry: WorkerEntry, payload: dict[str, Any]) -> Any:
+        action = self._describe_payload(payload)
+        started = time.perf_counter()
+        if self.debug:
+            self._log_worker(
+                f"[debug worker] >>> {action} path={entry.path}"
+            )
         with entry.lock:
             entry.conn.send(payload)
             response = entry.conn.recv()
+        if self.debug:
+            elapsed = time.perf_counter() - started
+            if response.get("ok"):
+                summary = self._summarize_worker_result(response.get("result"))
+                self._log_worker(
+                    f"[debug worker] <<< {action} OK ({elapsed:.3f}s){summary} path={entry.path}"
+                )
+            else:
+                error = response.get("error", "Unknown worker error")
+                self._log_worker(
+                    f"[debug worker] !!! {action} FAILED ({elapsed:.3f}s): {error} path={entry.path}"
+                )
         if not response.get("ok"):
             error = response.get("error", "Unknown worker error")
             raise RuntimeError(error)
         return response["result"]
+
+    @staticmethod
+    def _summarize_worker_result(result: Any) -> str:
+        if not isinstance(result, dict):
+            return ""
+        hints: list[str] = []
+        for key in ("status", "count", "path", "user_functions", "saved"):
+            if key in result:
+                hints.append(f"{key}={result[key]!r}")
+        if not hints:
+            return ""
+        return " | " + ", ".join(hints)
 
     def _remove_worker(self, path: str) -> None:
         entry = self._workers.pop(path, None)
@@ -202,11 +257,21 @@ _pool: DatabasePool | None = None
 _pool_lock = threading.Lock()
 
 
-def get_pool(ida_dir: str, max_workers: int | None = None) -> DatabasePool:
+def get_pool(
+    ida_dir: str,
+    max_workers: int | None = None,
+    debug: bool = False,
+    debug_log: Callable[[str], None] | None = None,
+) -> DatabasePool:
     global _pool
     with _pool_lock:
         if _pool is None:
-            _pool = DatabasePool(ida_dir=ida_dir, max_workers=max_workers)
+            _pool = DatabasePool(
+                ida_dir=ida_dir,
+                max_workers=max_workers,
+                debug=debug,
+                debug_log=debug_log,
+            )
         return _pool
 
 

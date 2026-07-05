@@ -89,7 +89,7 @@ claude mcp add --transport http idat-mcp http://127.0.0.1:8745/mcp
 | `--host` | `127.0.0.1` | HTTP 绑定地址 |
 | `--port` | `8745` | HTTP 端口 |
 | `--max-workers` | 无限制 | 同时打开的数据库数量上限 |
-| `--debug` | `false` | 在 stderr 输出 MCP 工具调用开始/结束及耗时 |
+| `--debug` | `false` | 在 stderr 输出 MCP 工具调用参数、worker/op 层级、结果摘要及耗时 |
 | `--stateless` | `false` | 无 session 的 HTTP 模式 |
 | `--allowed-hosts` | *(空)* | 远程访问 Host 白名单，如 `172.29.64.1:*` |
 
