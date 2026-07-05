@@ -112,27 +112,6 @@ Cursor 配置（Windows 访问 WSL 内服务）：
 
 将 `172.29.64.1` 替换为你的 WSL IP（`hostname -I`）。
 
-### 404 Not Found 排查
-
-`POST /mcp` 返回 **404** 通常不是路径错误，而是 **MCP session 失效**：
-
-| 原因 | 处理 |
-|------|------|
-| 服务重启后客户端仍带旧 `mcp-session-id` | 在 Cursor 中重连/禁用再启用 MCP |
-| 首次连接就 404 | 确认 URL 为 `http://HOST:8745/mcp`（无多余路径） |
-| 连通性测试 | 浏览器/curl 访问 `http://HOST:8745/health` 应返回 `{"status":"ok"}` |
-
-测试 initialize：
-
-```bash
-curl -X POST http://127.0.0.1:8745/mcp \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}'
-```
-
-**不要**在首次 initialize 时手动添加 `mcp-session-id` 头。
-
 ## 多数据库并行分析
 
 **支持。** 每个数据库在独立的 worker 进程中运行（各自加载一份 idalib），互不冲突。
