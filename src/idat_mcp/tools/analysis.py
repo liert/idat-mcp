@@ -58,3 +58,44 @@ def register(ctx: ToolContext) -> None:
             add_xrefs=add_xrefs,
             limit=limit,
         )
+
+    @ctx.tool()
+    def ida_get_microcode(
+        address: str,
+        maturity: str = "glbopt1",
+        max_blocks: int = 256,
+        max_instructions: int = 4096,
+    ) -> str:
+        """Extract Hex-Rays microcode (mba/mblock/minsn) for a function.
+
+        Returns SSA-style microcode blocks, successor edges, and instruction text.
+        Useful for control-flow deobfuscation (for example OLLVM flattening).
+        maturity accepts aliases such as locopt, glbopt1, or numeric Hex-Rays levels.
+        Requires Hex-Rays.
+        """
+        return ctx.call(
+            "get_microcode",
+            address=address,
+            maturity=maturity,
+            max_blocks=max_blocks,
+            max_instructions=max_instructions,
+        )
+
+    @ctx.tool()
+    def ida_find_crypto_constants(
+        add_comments: bool = True,
+        limit: int = 100,
+        signature_ids: list[str] | None = None,
+    ) -> str:
+        """Scan the database for common cryptographic magic constants.
+
+        Matches AES S-Boxes, MD5/SHA init vectors, ChaCha20 constants, CRC32
+        tables, and related signatures. Optionally adds [Crypto] comments at hits.
+        signature_ids limits scanning to specific signature ids when provided.
+        """
+        return ctx.call(
+            "find_crypto_constants",
+            add_comments=add_comments,
+            limit=limit,
+            signature_ids=signature_ids,
+        )

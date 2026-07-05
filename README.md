@@ -230,6 +230,8 @@ ida_close_database()
 | `ida_find_call_path` | 在调用图中搜索从起点函数到终点函数的路径（BFS 最短路径 + 备选路径，`max_depth` / `max_paths` 可调） |
 | `ida_get_backward_slice` | 从 sink 地址对局部变量做 backward slice，返回影响该变量的伪代码语句（需 Hex-Rays） |
 | `ida_resolve_indirect_calls` | 解析函数内间接调用（如 AArch64 `BLR`），推断可能 callee 并可 `add_cref` 补全控制流 |
+| `ida_get_microcode` | 提取 Hex-Rays 微码（`mblock`/`minsn`、SSA IR、块后继边；需 Hex-Rays，适合 OLLVM 去混淆） |
+| `ida_find_crypto_constants` | 扫描 AES/MD5/SHA/ChaCha20/CRC32 等密码学魔术常量，可选自动打 `[Crypto]` 注释 |
 
 ### 脚本执行
 

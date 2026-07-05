@@ -546,8 +546,294 @@ def resolve_indirect_calls(
     }
 
 
+_MATURITY_ALIASES: dict[str, str] = {
+    "zero": "MMAT_ZERO",
+    "generated": "MMAT_GENERATED",
+    "preoptimized": "MMAT_PREOPTIMIZED",
+    "locopt": "MMAT_LOCOPT",
+    "calls": "MMAT_CALLS",
+    "glbopt": "MMAT_GLBOPT1",
+    "glbopt1": "MMAT_GLBOPT1",
+    "glbopt2": "MMAT_GLBOPT2",
+    "glbopt3": "MMAT_GLBOPT3",
+    "lvars": "MMAT_LVARS",
+    "opt": "MMAT_GLBOPT1",
+}
+
+
+def _resolve_maturity(maturity: str) -> tuple[int, str]:
+    import ida_hexrays
+
+    key = maturity.strip().lower()
+    if key.isdigit():
+        value = int(key)
+        for name in dir(ida_hexrays):
+            if name.startswith("MMAT_") and getattr(ida_hexrays, name, None) == value:
+                return value, name
+        return value, f"MMAT_{value}"
+
+    attr = _MATURITY_ALIASES.get(key, key.upper())
+    if not attr.startswith("MMAT_"):
+        attr = f"MMAT_{attr}"
+    if not hasattr(ida_hexrays, attr):
+        valid = ", ".join(sorted(_MATURITY_ALIASES))
+        raise ValueError(f"Unknown microcode maturity {maturity!r}. Try one of: {valid}")
+    value = getattr(ida_hexrays, attr)
+    return value, attr
+
+
+def get_microcode(
+    address: str,
+    maturity: str = "glbopt1",
+    max_blocks: int = 256,
+    max_instructions: int = 4096,
+) -> dict[str, Any]:
+    import ida_funcs
+    import ida_hexrays
+    import ida_name
+
+    func = resolve_function(address)
+    if not ida_hexrays.init_hexrays_plugin():
+        raise RuntimeError("Hex-Rays decompiler is not available")
+
+    maturity_value, maturity_name = _resolve_maturity(maturity)
+    max_blocks = max(1, min(max_blocks, 4096))
+    max_instructions = max(1, min(max_instructions, 65536))
+
+    cfunc = ida_hexrays.decompile(func.start_ea)
+    if cfunc is None:
+        raise RuntimeError(f"Decompilation failed for {address}")
+    mba = cfunc.mba
+    if mba is None:
+        raise RuntimeError(f"Microcode is not available for {address}")
+
+    blocks: list[dict[str, Any]] = []
+    instruction_count = 0
+
+    for block_idx in range(min(mba.qty, max_blocks)):
+        mblock = mba.get_mblock(block_idx)
+        successors = [mblock.succ(index) for index in range(mblock.nsucc())]
+        instructions: list[dict[str, str]] = []
+        minsn = mblock.head
+        while minsn is not None:
+            if instruction_count >= max_instructions:
+                break
+            instructions.append(
+                {
+                    "address": hex(minsn.ea),
+                    "opcode": str(minsn.opcode),
+                    "text": minsn.dstr(),
+                }
+            )
+            instruction_count += 1
+            minsn = minsn.next
+
+        blocks.append(
+            {
+                "index": block_idx,
+                "start_serial": mblock.start,
+                "end_serial": mblock.end,
+                "head_address": hex(mblock.head.ea) if mblock.head is not None else "",
+                "serial": mblock.serial,
+                "successors": successors,
+                "instruction_count": len(instructions),
+                "instructions": instructions,
+            }
+        )
+        if instruction_count >= max_instructions:
+            break
+
+    func_name = ida_funcs.get_func_name(func.start_ea) or ida_name.get_name(func.start_ea) or ""
+    truncated = mba.qty > len(blocks) or instruction_count >= max_instructions
+    return {
+        "function": hex(func.start_ea),
+        "name": func_name,
+        "requested_maturity": maturity_name,
+        "maturity": int(mba.maturity),
+        "block_count": mba.qty,
+        "blocks_returned": len(blocks),
+        "instruction_count": instruction_count,
+        "truncated": truncated,
+        "blocks": blocks,
+    }
+
+
+_CRYPTO_SIGNATURES: tuple[dict[str, str], ...] = (
+    {
+        "id": "aes_sbox",
+        "algorithm": "AES",
+        "name": "AES S-Box",
+        "pattern": (
+            "63 7C 77 7B F2 6B 6F C5 30 01 67 2B FE D7 AB 76 "
+            "CA 82 C9 7D FA 59 47 F0 AD D4 A2 AF 9C A4 72 C0"
+        ),
+    },
+    {
+        "id": "aes_inv_sbox",
+        "algorithm": "AES",
+        "name": "AES Inverse S-Box",
+        "pattern": (
+            "52 09 6A D5 30 36 A5 38 BF 40 A3 9E 81 F3 D7 FB "
+            "7C E3 39 82 9B 2F FF 87 34 8E 43 44 C4 DE E9 CB"
+        ),
+    },
+    {
+        "id": "md5_init",
+        "algorithm": "MD5",
+        "name": "MD5 Initial Hash Values",
+        "pattern": "01 23 45 67 89 AB CD EF FE DC BA 98 76 54 32 10",
+    },
+    {
+        "id": "md5_k",
+        "algorithm": "MD5",
+        "name": "MD5 Round Constants",
+        "pattern": "78 A4 6A D7 56 B7 C7 E8 DB 70 20 24 EE CE BD C1",
+    },
+    {
+        "id": "sha256_h",
+        "algorithm": "SHA-256",
+        "name": "SHA-256 Initial Hash Values",
+        "pattern": (
+            "67 E6 09 6A 85 AE 67 BB 72 F3 6E 3C 3A F5 4A 52 "
+            "52 7F 0E 51 8C 68 05 9B AB D9 83 1F 19 CD E0 5B"
+        ),
+    },
+    {
+        "id": "sha256_k",
+        "algorithm": "SHA-256",
+        "name": "SHA-256 Round Constants",
+        "pattern": "98 2F 8A 42 91 44 37 71 CF FB C0 B5 A0 DB 3D 7D",
+    },
+    {
+        "id": "sha1_h",
+        "algorithm": "SHA-1",
+        "name": "SHA-1 Initial Hash Values",
+        "pattern": "67 45 23 01 EF CD AB 89 98 BA DC FE 10 32 54 76 C3 D2 E1 F0",
+    },
+    {
+        "id": "chacha_sigma",
+        "algorithm": "ChaCha20",
+        "name": "ChaCha20 Constant",
+        "pattern": "65 78 70 61 6E 64 20 33 32 2D 62 79 74 65 20 6B",
+    },
+    {
+        "id": "crc32_table",
+        "algorithm": "CRC32",
+        "name": "CRC32 Lookup Table",
+        "pattern": "00 00 00 00 96 30 07 77 2C 61 0E EE BA 51 09 99",
+    },
+    {
+        "id": "tea_delta",
+        "algorithm": "TEA/XTEA",
+        "name": "TEA Delta Constant",
+        "pattern": "B9 79 37 9E",
+    },
+    {
+        "id": "blowfish_p",
+        "algorithm": "Blowfish",
+        "name": "Blowfish P-Array",
+        "pattern": "88 6A 3F 24 85 16 B9 2B",
+    },
+    {
+        "id": "rsa_pkcs1_oid",
+        "algorithm": "RSA",
+        "name": "RSA PKCS#1 OID",
+        "pattern": "2A 86 48 86 F7 0D 01 01 01",
+    },
+)
+
+
+def _scan_crypto_signature(
+    signature: dict[str, str],
+    start: int,
+    end: int,
+    limit: int,
+    seen: set[int],
+) -> list[dict[str, Any]]:
+    import ida_bytes
+    import ida_idaapi
+
+    matches: list[dict[str, Any]] = []
+    ea = start
+    pattern = signature["pattern"]
+
+    while len(matches) < limit:
+        found = ida_bytes.find_bytes(pattern, ea, range_end=end)
+        if found == ida_idaapi.BADADDR:
+            break
+        if found not in seen:
+            seen.add(found)
+            matches.append(
+                {
+                    "address": hex(found),
+                    "algorithm": signature["algorithm"],
+                    "name": signature["name"],
+                    "signature_id": signature["id"],
+                    "pattern": pattern,
+                }
+            )
+        ea = found + 1
+
+    return matches
+
+
+def find_crypto_constants(
+    add_comments: bool = True,
+    limit: int = 100,
+    signature_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    import ida_bytes
+    import ida_ida
+    import ida_segment
+
+    limit = max(1, min(limit, 1000))
+    start = ida_ida.inf_get_min_ea()
+    end = ida_ida.inf_get_max_ea()
+
+    selected = _CRYPTO_SIGNATURES
+    if signature_ids:
+        wanted = {item.lower() for item in signature_ids}
+        selected = tuple(item for item in _CRYPTO_SIGNATURES if item["id"] in wanted)
+        if not selected:
+            valid = ", ".join(item["id"] for item in _CRYPTO_SIGNATURES)
+            raise ValueError(f"No matching crypto signatures. Available: {valid}")
+
+    matches: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    comments_added = 0
+
+    for signature in selected:
+        if len(matches) >= limit:
+            break
+        remaining = limit - len(matches)
+        for hit in _scan_crypto_signature(signature, start, end, remaining, seen):
+            comment_added = False
+            if add_comments:
+                prefix = f"[Crypto] {signature['name']}"
+                existing = ida_bytes.get_cmt(int(hit["address"], 16), False) or ""
+                if not existing.startswith("[Crypto]"):
+                    if ida_bytes.set_cmt(int(hit["address"], 16), prefix, False):
+                        comment_added = True
+                        comments_added += 1
+            hit["comment_added"] = comment_added
+            matches.append(hit)
+
+    segments_scanned = ida_segment.get_segm_qty()
+    return {
+        "count": len(matches),
+        "signatures_scanned": len(selected),
+        "segments_scanned": segments_scanned,
+        "comments_added": comments_added,
+        "add_comments": add_comments,
+        "available_signatures": [item["id"] for item in _CRYPTO_SIGNATURES],
+        "matches": matches,
+    }
+
+
 OPERATIONS = {
     "find_call_path": find_call_path,
     "get_backward_slice": get_backward_slice,
     "resolve_indirect_calls": resolve_indirect_calls,
+    "get_microcode": get_microcode,
+    "find_crypto_constants": find_crypto_constants,
 }
