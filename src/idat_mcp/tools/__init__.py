@@ -1,16 +1,7 @@
-from __future__ import annotations
-
-from idat_mcp.tools import (
-    annotations,
-    database,
-    functions,
-    script,
-    search,
-    symbols,
-    types,
-    variables,
-    xrefs,
-)
+from idat_mcp.tools import database, functions, search, symbols, variables, xrefs
+from idat_mcp.tools import annotations as annotation_tools
+from idat_mcp.tools import script as script_tools
+from idat_mcp.tools import types as type_tools
 from idat_mcp.tools._base import ToolContext
 
 
@@ -21,7 +12,7 @@ def register_tools(mcp, ida_dir: str, max_workers: int | None) -> None:
     xrefs.register(ctx)
     search.register(ctx)
     symbols.register(ctx)
-    annotations.register(ctx)
-    types.register(ctx)
+    annotation_tools.register(ctx)
+    type_tools.register(ctx)
     variables.register(ctx)
-    script.register(ctx)
+    script_tools.register(ctx)
