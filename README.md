@@ -17,17 +17,26 @@ cd idat-mcp
 python3 -m venv .venv
 source .venv/bin/activate
 
+# 1. 升级 pip
 pip install -U pip
-pip install mcp uvicorn
+
+# 2. 以可编辑模式安装当前项目（这会自动安装依赖，并注册 idat-mcp 命令行工具）
+pip install -e .
+
+# 3. 安装 idalib 的 Python 绑定包（路径换成你的 IDA 安装路径中相应的 whl 文件）
 pip install /path/to/ida/idalib/python/idapro-*.whl
 
-# 激活 idalib（只需一次，路径换成你的 IDA 安装目录）
+# 4. 激活 idalib（只需一次，路径换成你的 IDA 安装目录）
 python /path/to/ida/idalib/python/py-activate-idalib.py -d /path/to/ida
 ```
 
-或使用脚本（会读取 `IDADIR` 环境变量作为 IDA 路径，仅用于安装）：
+或使用安装脚本（一键自动创建虚拟环境、安装依赖与 idalib，并激活）：
 
 ```bash
+# 直接指定 IDA 路径作为参数
+bash scripts/setup.sh /path/to/ida
+
+# 或者通过环境变量指定 IDA 路径
 IDADIR=/path/to/ida bash scripts/setup.sh
 ```
 
@@ -173,6 +182,7 @@ ida_close_database()
 | 工具 | 说明 |
 |------|------|
 | `ida_open_database` | 打开二进制文件并自动分析 |
+| `ida_analyze_database` | 对当前默认数据库执行完整自动分析（适用于列表仅返回导入表等分析不完整的情况） |
 | `ida_close_database` | 关闭数据库（默认关闭当前默认库） |
 | `ida_list_databases` | 列出已打开的数据库（含 `is_default` 字段） |
 | `ida_select_database` | 选择默认数据库 |
