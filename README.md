@@ -10,7 +10,57 @@
 - Python 3.11+
 - Linux / macOS / Windows
 
-## 安装（只需一次）
+## 安装
+
+请根据使用场景在下面两种方式中**选择一种**，不要依次执行两套安装命令。
+
+### 方式一：安装为 systemd 服务（Linux，推荐）
+
+适合需要开机启动、后台常驻或长期提供 MCP 服务的场景。`setup.py` 会完成全部安装
+步骤并注册服务，因此不需要再执行“方式二”。
+
+普通用户推荐安装为用户级服务，无需 `sudo`：
+
+```bash
+python3 setup.py --user --ida-dir /path/to/ida
+```
+
+如果确实需要系统级服务，则改用以下命令；不要同时安装用户级和系统级服务：
+
+```bash
+sudo python3 setup.py --ida-dir /path/to/ida
+```
+
+默认监听 `127.0.0.1:8745`。如需修改，在首次安装或重新执行安装器时指定：
+
+```bash
+python3 setup.py --user --ida-dir /path/to/ida --host 0.0.0.0 --port 9000
+```
+
+安装器会自动创建 `.venv`、安装项目依赖与 idalib Python 绑定、激活 idalib，随后
+启用并启动服务。未指定 `--ida-dir` 时会读取 `IDADIR` 环境变量。
+
+重复运行安装器是安全的：已完成的步骤会跳过，配置变化时只重新执行对应步骤。
+其他安装选项：
+
+- `--dry-run`：只预览 systemd unit，不修改系统
+- `--no-start`：安装并启用服务，但不立即启动
+- `--force-reinstall`：忽略安装状态并完整重装依赖、重新激活 idalib
+
+安装完成后无需手动运行 `server.py`。用户级服务可通过以下命令管理：
+
+```bash
+systemctl --user status idat-mcp
+systemctl --user restart idat-mcp
+systemctl --user stop idat-mcp
+```
+
+系统级服务去掉命令中的 `--user` 即可。
+
+### 方式二：仅安装命令行程序（手动运行）
+
+适合开发调试、不希望注册 systemd 服务，或者使用 macOS / Windows 的场景。完成后
+需要自行启动服务器。选择此方式时不要运行 `setup.py`：
 
 ```bash
 cd idat-mcp
@@ -20,7 +70,7 @@ source .venv/bin/activate
 # 1. 升级 pip
 pip install -U pip
 
-# 2. 以可编辑模式安装当前项目（这会自动安装依赖，并注册 idat-mcp 命令行工具）
+# 2. 以可编辑模式安装当前项目及依赖
 pip install -e .
 
 # 3. 安装 idalib 的 Python 绑定包（路径换成你的 IDA 安装路径中相应的 whl 文件）
@@ -30,17 +80,7 @@ pip install /path/to/ida/idalib/python/idapro-*.whl
 python /path/to/ida/idalib/python/py-activate-idalib.py -d /path/to/ida
 ```
 
-或使用安装脚本（一键自动创建虚拟环境、安装依赖与 idalib，并激活）：
-
-```bash
-# 直接指定 IDA 路径作为参数
-bash scripts/setup.sh /path/to/ida
-
-# 或者通过环境变量指定 IDA 路径
-IDADIR=/path/to/ida bash scripts/setup.sh
-```
-
-## 启动 HTTP 服务
+### 手动启动（仅方式二）
 
 ```bash
 python server.py --ida-dir /path/to/ida
@@ -53,17 +93,9 @@ python server.py --ida-dir /path/to/ida --host 0.0.0.0 --port 8745
 python server.py -d /path/to/ida --stateless
 ```
 
-也可使用已安装的入口（同样必须传 `--ida-dir`）：
-
-```bash
-idat-mcp --ida-dir /path/to/ida --host 127.0.0.1 --port 8745
-```
-
 服务地址：`http://127.0.0.1:8745/mcp`
 
-## Cursor / MCP 客户端配置
-
-在 Cursor 的 MCP 设置中添加：
+## MCP 客户端配置
 
 ```json
 {
@@ -73,12 +105,6 @@ idat-mcp --ida-dir /path/to/ida --host 127.0.0.1 --port 8745
     }
   }
 }
-```
-
-或使用 CLI：
-
-```bash
-claude mcp add --transport http idat-mcp http://127.0.0.1:8745/mcp
 ```
 
 ## 命令行参数
@@ -95,23 +121,17 @@ claude mcp add --transport http idat-mcp http://127.0.0.1:8745/mcp
 
 ## 远程访问（WSL / LAN）
 
+如果采用“方式一”安装服务，请重新运行安装器更新监听地址：
+
+```bash
+python3 setup.py --user --ida-dir /path/to/ida --host 0.0.0.0 --port 8745
+```
+
+如果采用“方式二”手动安装，则在启动命令中指定监听地址：
+
 ```bash
 python server.py --ida-dir /path/to/ida --host 0.0.0.0 --port 8745
 ```
-
-Cursor 配置（Windows 访问 WSL 内服务）：
-
-```json
-{
-  "mcpServers": {
-    "idat-mcp": {
-      "url": "http://172.29.64.1:8745/mcp"
-    }
-  }
-}
-```
-
-将 `172.29.64.1` 替换为你的 WSL IP（`hostname -I`）。
 
 ## 多数据库并行分析
 
